@@ -2,7 +2,7 @@
 "name": "桃色E団 Webサイト",
 "short_name": "桃色E団",
 "description": "2026年度 体育祭 桃色E団専用特設サイト",
-"start_url": "./index_2.html",
+"start_url": "./index.html",
 "display": "standalone",
 "background_color": "#FFF5F8",
 "theme_color": "#EC4899",
