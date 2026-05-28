@@ -1,0 +1,1390 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <!-- viewport-fit=cover を追加して、iPhoneのノッチ（画面上部の凹凸）部分まで背景色を広げます -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>桃色E団 Webサイト</title>
+    
+    <!-- ==========================================
+      PWA (Progressive Web App) 用メタタグ＆マニフェスト
+    ========================================== -->
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#FFF5F8">
+    
+    <!-- iOS用の設定 (PWA起動、ステータスバー、アプリアイコン) -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="桃色E団">
+    <link rel="apple-touch-icon" href="https://img.icons8.com/emoji/192/000000/cherry-blossom.png">
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    animation: {
+                        'spin-slow': 'spin 15s linear infinite',
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- React and ReactDOM -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+    <!-- Babel (In-browser JSX Compiler for Zero-Config Deployment) -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
+    <!-- ==========================================
+      OneSignal SDKの読み込みと初期化 (ご指定のドメイン制限付き初期化)
+    ========================================== -->
+    <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
+    <script>
+      window.OneSignalDeferred = window.OneSignalDeferred || [];
+      OneSignalDeferred.push(async function(OneSignal) {
+        const host = window.location.hostname;
+        // 許可された本番ドメイン、またはローカル開発環境のみ初期化を実行してプレビューエラーを防止
+        if (host === 'tirestudio.github.io' || host === 'localhost' || host === '127.0.0.1') {
+          await OneSignal.init({
+            appId: "f4e581d1-c4e6-4ceb-a841-555ee90724fc",
+          });
+        } else {
+          console.warn("OneSignal initialization skipped on unallowed domain (Preview/Sandbox mode):", host);
+        }
+      });
+    </script>
+</head>
+<!-- overflow-x-hidden でスマートフォンでの不自然な横揺れ・横スクロールを完全に防止します -->
+<body class="bg-[#FFF5F8] text-gray-800 overflow-x-hidden select-none">
+
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useMemo } = React;
+
+        // 動作確認済みの最新GAS WebアプリURL
+        const GAS_URL = 'https://script.google.com/macros/s/AKfycby3Z9Ws1OPhCbFe-CO0Sa8VXBh30iv8tKqKd_yJ9gBzVo9F-VGrp7PPC1xQlhSfImmJHQ/exec';
+
+        // デフォルトのパート情報（GAS疎通前の表示、またはフォールバック用）
+        const DEFAULT_SECTION_INFO = [
+            { id: 'ouen-info', category: '応援団', title: '応援団長より', content: '「圧倒的な声量と一糸乱れぬ動きで、桃色E団を勝利に導こう！」', author: '団長: 田中 一郎' },
+            { id: 'mass-info', category: 'マスゲーム', title: '💃 振り付け・構成', content: '「桜花烂漫」をテーマに、美しさと力強さを表現しましょう！', author: '次回の全体合わせ: 中庭にて' },
+            { id: 'mascot-info', category: 'マスコット', title: '🎨 制作進行状況', content: '現在、外枠の木枠制作に入っています。色塗りの手伝いを募集します！', author: '制作場所: 美術室前' }
+        ];
+
+        // 役職情報の静的データ
+        const POSITIONS = [
+            { role: '副長', name: '鈴木 花子', desc: '総長を全力でサポートし、団の雰囲気を明るく盛り上げます！', icon: '⭐' },
+            { role: '応援団長', name: '田中 一郎', desc: '圧倒的な声量とパッションで、勝利へ導く応援を作ります！', icon: '🔥' },
+            { role: 'マスゲーム長', name: '伊藤 美咲', desc: '美しく、そして心に残るマスゲームをみんなで完成させましょう！', icon: '💃' },
+            { role: 'マスコット長', name: '渡辺 健太', desc: '誰からも愛される最高のマスコットを作り上げます！', icon: '🎨' },
+            { role: '会計', name: '中村 結衣', desc: '団のお金をしっかり管理し、スムーズな活動を支えます。', icon: '💰' },
+            { role: '書記', name: '小林 翔太', desc: '議事録やスケジュール管理など、裏から団を支えます。', icon: '📝' },
+        ];
+
+        const Icons = {
+            Menu: ({ size = 20, className }) => (
+                <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={className}><line x1="4" x2="20" y1="12" y2="12"></line><line x1="4" x2="20" y1="6" y2="6"></line><line x1="4" x2="20" y1="18" y2="18"></line></svg>
+            ),
+            X: ({ size = 20, className }) => (
+                <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={className}><line x1="18" x2="6" y1="6" y2="18"></line><line x1="6" x2="18" y1="6" y2="18"></line></svg>
+            ),
+            Pin: ({ size = 18, className }) => (
+                <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><line x1="12" y1="17" x2="12" y2="22"></line><path d="M5 17h14v-1.76a2 2 0 0 0-.44-1.24l-2.12-2.65A2 2 0 0 1 16 10.11V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v5.11a2 2 0 0 1-.44 1.24L5.44 14a2 2 0 0 0-.44 1.24Z"></path></svg>
+            ),
+            Download: ({ size = 20, className }) => (
+                <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+            ),
+            ChevronDown: ({ size = 20, className }) => (
+                <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={className}><polyline points="6 9 12 15 18 9"></polyline></svg>
+            ),
+            ChevronRight: ({ size = 20, className }) => (
+                <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={className}><polyline points="9 18 15 12 9 6"></polyline></svg>
+            ),
+            Lock: ({ size = 20, className }) => (
+                <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+            ),
+            Edit: ({ size = 16, className }) => (
+                <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4z"></path></svg>
+            ),
+            Plus: ({ size = 18, className }) => (
+                <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={className}><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" x2="19" y1="12" y2="12"></line></svg>
+            ),
+            Trash2: ({ size = 16, className }) => (
+                <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={className}><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
+            ),
+            Box: ({ size = 16, className }) => (
+                <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>
+            ),
+            ExternalLink: ({ size = 18, className }) => (
+                <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
+            ),
+            ImageIcon: ({ size = 18, className }) => (
+                <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
+            ),
+            RefreshCw: ({ size = 18, className }) => (
+                <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
+            ),
+            Save: ({ size = 20, className }) => (
+                <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
+            ),
+            CheckCircle: ({ size = 24, className }) => (
+                <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
+            ),
+            AlertCircle: ({ size = 24, className }) => (
+                <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={className}><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+            ),
+            Clock: ({ size = 12, className }) => (
+                <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+            ),
+            Bell: ({ size = 18, className }) => (
+                <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"></path><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"></path></svg>
+            )
+        };
+
+        const Toast = ({ message, type, onClose }) => {
+            useEffect(() => {
+                const timer = setTimeout(onClose, 4000);
+                return () => clearTimeout(timer);
+            }, [onClose]);
+
+            return (
+                <div className={`fixed bottom-6 right-6 left-6 md:left-auto z-50 flex items-center gap-3 px-6 py-4 rounded-2xl shadow-xl border animate-fade-in-up md:max-w-md ${
+                    type === 'success' ? 'bg-white border-green-100 text-green-700' : 'bg-white border-red-100 text-red-700'
+                }`}>
+                    {type === 'success' ? <Icons.CheckCircle className="text-green-500" size={24} /> : <Icons.AlertCircle className="text-red-500" size={24} />}
+                    <span className="font-bold text-sm flex-1">{message}</span>
+                    <button onClick={onClose} className="ml-2 text-gray-400 hover:text-gray-600"><Icons.X size={16}/></button>
+                </div>
+            );
+        };
+
+        const PageHeader = ({ title, bgText }) => (
+            <div className="relative pt-24 pb-12 overflow-hidden mb-8 flex justify-center items-center">
+                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-[5rem] md:text-[10rem] font-black text-rose-100/30 opacity-40 whitespace-nowrap select-none pointer-events-none z-0 tracking-tighter uppercase font-mono">
+                    {bgText || title}
+                </div>
+                <div className="relative z-10 text-center px-4">
+                    <h1 className="text-4xl md:text-6xl font-black text-gray-800 tracking-tight drop-shadow-sm">{title}</h1>
+                    <div className="w-16 h-1.5 bg-gradient-to-r from-rose-400 to-pink-500 mx-auto mt-4 rounded-full"></div>
+                </div>
+            </div>
+        );
+
+        const AccordionItem = ({ title, subtitle, content, pinType, category, onCategoryClick, heading }) => {
+            const [isOpen, setIsOpen] = useState(false);
+            const formatDisplayDate = (dateStr) => {
+                if (!dateStr) return '';
+                return dateStr.replace('T', ' ').substring(0, 16);
+            };
+            return (
+                <div className="bg-white rounded-2xl shadow-sm border border-rose-50 overflow-hidden transition-all duration-300 hover:shadow-md mb-4 group relative">
+                    <div className="absolute top-0 left-0 w-1.5 h-full bg-gradient-to-b from-rose-300 to-pink-400 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                    <div className="w-full px-4 md:px-8 py-4 flex items-center justify-between text-left">
+                        <div className="flex flex-col md:flex-row md:items-center gap-2 md:gap-6 flex-grow pr-3 min-w-0">
+                            <div className="flex items-center gap-1.5 md:gap-3 shrink-0 flex-wrap">
+                                {pinType === 'home' && <Icons.Pin size={16} className="text-rose-500 fill-rose-500 drop-shadow-sm shrink-0" />}
+                                {pinType === 'local' && <Icons.Pin size={16} className="text-rose-300 shrink-0" />}
+                                {category && (
+                                    <button 
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            if (onCategoryClick) onCategoryClick(category);
+                                        }} 
+                                        className="text-[10px] md:text-xs font-black tracking-wider px-2 py-0.5 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-full whitespace-nowrap transition-colors"
+                                    >
+                                        {category}
+                                    </button>
+                                )}
+                                {heading && (
+                                    <span className="text-[10px] md:text-xs font-bold tracking-wider px-2 py-0.5 bg-gray-100 text-gray-600 border border-gray-200/60 rounded-md whitespace-nowrap">
+                                        {heading}
+                                    </span>
+                                )}
+                                <span className="text-xs font-medium text-gray-400 font-mono">{formatDisplayDate(subtitle)}</span>
+                            </div>
+                            <button onClick={() => setIsOpen(!isOpen)} className="text-left font-bold text-gray-800 text-base md:text-lg leading-snug group-hover:text-rose-600 transition-colors focus:outline-none truncate w-full">
+                                {title}
+                            </button>
+                        </div>
+                        <button onClick={() => setIsOpen(!isOpen)} className={`transform transition-transform duration-300 bg-rose-50 p-2 rounded-full shrink-0 ${isOpen ? 'rotate-180 bg-rose-100 text-rose-600' : 'text-rose-400'}`}>
+                            <Icons.ChevronDown size={16} />
+                        </button>
+                    </div>
+                    <div className={`transition-all duration-300 ease-in-out px-4 md:px-8 text-gray-600 whitespace-pre-wrap text-sm md:text-base leading-relaxed ${isOpen ? 'py-5 border-t border-rose-100/50 max-h-[1000px] opacity-100' : 'max-h-0 opacity-0 overflow-hidden'}`}>
+                        {content}
+                    </div>
+                </div>
+            );
+        };
+
+        // React用のOneSignalプッシュ購読ボタン
+        const PushSubscriptionButton = () => {
+            const [isSubscribed, setIsSubscribed] = useState(false);
+            const [isSupported, setIsSupported] = useState(true);
+            const [isPending, setIsPending] = useState(false);
+
+            useEffect(() => {
+                window.OneSignalDeferred = window.OneSignalDeferred || [];
+                window.OneSignalDeferred.push((OneSignal) => {
+                    // プッシュ通知がサポートされているか確認
+                    setIsSupported(OneSignal.Notifications.isPushSupported());
+                    
+                    // 初期状態の取得
+                    setIsSubscribed(OneSignal.User.PushSubscription.optedIn);
+
+                    // 購読ステータスの変化を監視するイベントリスナー
+                    const handleSubscriptionChange = (event) => {
+                        setIsSubscribed(event.current.optedIn);
+                        setIsPending(false);
+                    };
+
+                    OneSignal.User.PushSubscription.addEventListener("change", handleSubscriptionChange);
+
+                    return () => {
+                        OneSignal.User.PushSubscription.removeEventListener("change", handleSubscriptionChange);
+                    };
+                });
+            }, []);
+
+            const handleToggleSubscription = () => {
+                setIsPending(true);
+                window.OneSignalDeferred = window.OneSignalDeferred || [];
+                window.OneSignalDeferred.push(async (OneSignal) => {
+                    try {
+                        if (OneSignal.User.PushSubscription.optedIn) {
+                            // 購読中の場合はオプトアウト（配信停止）
+                            await OneSignal.User.PushSubscription.optOut();
+                        } else {
+                            // 未購読の場合はオプトイン（通知を許可するダイアログを表示）
+                            await OneSignal.User.PushSubscription.optIn();
+                        }
+                    } catch (error) {
+                        console.error("購読の切り替えに失敗しました:", error);
+                        setIsPending(false);
+                    }
+                });
+            };
+
+            if (!isSupported) {
+                return null; // 非サポート端末では表示しない
+            }
+
+            return (
+                <button
+                    onClick={handleToggleSubscription}
+                    disabled={isPending}
+                    className={`w-full sm:w-auto flex items-center justify-center gap-2 px-8 py-3.5 rounded-full font-bold text-sm tracking-wider transition-all duration-300 shadow-xl hover:-translate-y-1 active:scale-95 ${
+                        isSubscribed
+                            ? 'bg-rose-50 text-rose-600 border border-rose-200 hover:bg-rose-100 shadow-rose-100/30'
+                            : 'bg-rose-500 text-white hover:bg-rose-600 shadow-rose-500/30'
+                    } ${isPending ? 'opacity-70 cursor-not-allowed' : ''}`}
+                >
+                    <Icons.Bell size={18} className={isSubscribed ? "fill-rose-600" : ""} />
+                    <span>
+                        {isPending 
+                            ? '処理中...' 
+                            : isSubscribed 
+                                ? '通知をオフにする' 
+                                : '通知を受け取る'}
+                    </span>
+                </button>
+            );
+        };
+
+        const HomePage = ({ navigateTo, news, blogs, newsError, blogError, isFetching }) => {
+            const [shuffledPositions, setShuffledPositions] = useState([]);
+            useEffect(() => {
+                const shuffleArray = (array) => {
+                    const newArray = [...array];
+                    for (let i = newArray.length - 1; i > 0; i--) {
+                        const j = Math.floor(Math.random() * (i + 1));
+                        [newArray[i], newArray[j]] = [newArray[j], newArray[i]];
+                    }
+                    return newArray;
+                };
+                setShuffledPositions(shuffleArray(POSITIONS));
+            }, []);
+
+            const visibleNews = useMemo(() => {
+                const now = new Date();
+                return news.filter(n => new Date(n.date.replace(' ', 'T')) <= now);
+            }, [news]);
+
+            const visibleBlogs = useMemo(() => {
+                const now = new Date();
+                return blogs.filter(b => new Date(b.date.replace(' ', 'T')) <= now);
+            }, [blogs]);
+
+            const recentNews = useMemo(() => {
+                const getLatest = (cat, count) => visibleNews.filter(n => n.category === cat).slice(0, count);
+                const general = getLatest('全体', 2);
+                const ouen = getLatest('応援団', 1);
+                const mass = getLatest('マスゲーム', 1);
+                const mascot = getLatest('マスコット', 1);
+                return [...general, ...ouen, ...mass, ...mascot].sort((a, b) => new Date(b.date.replace(' ', 'T')) - new Date(a.date.replace(' ', 'T')));
+            }, [visibleNews]);
+
+            const recentBlogs = useMemo(() => {
+                return visibleBlogs.sort((a, b) => new Date(b.date.replace(' ', 'T')) - new Date(a.date.replace(' ', 'T'))).slice(0, 3);
+            }, [visibleBlogs]);
+
+            return (
+                <div className="space-y-16 md:space-y-24 pb-16 overflow-x-hidden">
+                    {/* もにゅもにゅアニメーション付きヒーローセクション */}
+                    <section className="relative h-[85vh] flex items-center justify-center overflow-hidden bg-gradient-to-br from-rose-200 via-pink-100 to-orange-100 pb-12" style={{ clipPath: 'polygon(0 0, 100% 0, 100% 90%, 0 100%)' }}>
+                        <div className="absolute top-1/4 left-1/4 w-[50vw] h-[50vw] md:w-[40vw] md:h-[40vw] bg-rose-300/40 rounded-full mix-blend-multiply filter blur-3xl opacity-40 animate-monyu"></div>
+                        <div className="absolute top-1/3 right-1/4 w-[45vw] h-[45vw] md:w-[35vw] md:h-[35vw] bg-pink-300/40 rounded-full mix-blend-multiply filter blur-3xl opacity-40 animate-monyu animation-delay-2000"></div>
+                        <div className="absolute -bottom-8 left-1/2 w-[40vw] h-[40vw] md:w-[30vw] md:h-[30vw] bg-yellow-200/40 rounded-full mix-blend-multiply filter blur-3xl opacity-40 animate-monyu animation-delay-4000"></div>
+
+                        <div className="relative z-10 text-center px-6 max-w-4xl mx-auto">
+                            <p className="text-rose-600 font-bold tracking-[0.3em] mb-3 text-xs md:text-sm animate-fade-in-up">TEAM PINK 2026</p>
+                            <h1 className="text-5xl md:text-8xl font-black text-gray-900 tracking-tighter mb-6 drop-shadow-sm animate-fade-in-up" style={{ animationDelay: '0.1s' }}>
+                                桃色<span className="text-transparent bg-clip-text bg-gradient-to-r from-rose-500 to-pink-600">E</span>団
+                            </h1>
+                            <p className="text-gray-700 text-base md:text-xl font-medium leading-relaxed mb-8 animate-fade-in-up" style={{ animationDelay: '0.2s' }}>
+                                情熱と誇りを胸に。<br/>最高の体育祭を、ここから創り出す。
+                            </p>
+                            <div className="flex flex-col sm:flex-row items-center justify-center gap-4 animate-fade-in-up" style={{ animationDelay: '0.3s' }}>
+                                <button onClick={() => navigateTo('news')} className="w-full sm:w-auto bg-gray-900 text-white px-8 py-3.5 rounded-full font-bold text-sm tracking-wider hover:bg-rose-500 hover:shadow-rose-500/30 transition-all duration-300 shadow-xl hover:-translate-y-1 active:scale-95">
+                                    最新情報を見る
+                                </button>
+                                {/* 100%確実に描画・動作するReact実装のプッシュ通知購読ボタン */}
+                                <PushSubscriptionButton />
+                            </div>
+                        </div>
+                    </section>
+
+                    <div className="max-w-5xl mx-auto px-4 space-y-20 md:space-y-32">
+                        <section className="relative">
+                            <div className="absolute -left-4 top-0 text-6xl md:text-8xl font-black text-rose-100 opacity-20 select-none pointer-events-none -z-10 font-mono uppercase">NEWS</div>
+                            <div className="flex items-end justify-between mb-8 border-b-2 border-rose-100/40 pb-3">
+                                <div>
+                                    <h2 className="text-3xl md:text-4xl font-black text-gray-800 tracking-tight">お知らせ</h2>
+                                    <p className="text-rose-500 text-xs tracking-[0.2em] mt-1 font-bold uppercase">LATEST INFORMATION</p>
+                                </div>
+                                <button onClick={() => navigateTo('news')} className="text-gray-500 hover:text-rose-600 flex items-center text-xs md:text-sm font-bold transition-colors group">
+                                    すべて見る <Icons.ChevronRight size={16} className="transform group-hover:translate-x-1 transition-transform text-rose-400" />
+                                </button>
+                            </div>
+                            {isFetching ? (
+                                <div className="flex justify-center py-12">
+                                    <div className="animate-spin rounded-full h-8 w-8 border-4 border-rose-200 border-t-rose-500"></div>
+                                </div>
+                            ) : newsError ? (
+                                <div className="bg-rose-50/50 border border-rose-100 rounded-2xl p-6 text-center text-rose-700 font-bold flex items-center justify-center gap-2 shadow-inner text-sm">
+                                    <Icons.AlertCircle className="text-rose-500 shrink-0" size={18} />
+                                    <span>お知らせが取得できませんでした。</span>
+                                </div>
+                            ) : (
+                                <div className="space-y-3">
+                                    {recentNews.map(item => (
+                                        <AccordionItem 
+                                            key={item.id} 
+                                            title={item.title} 
+                                            subtitle={item.date} 
+                                            content={item.content} 
+                                            pinType={item.pin === 'home' ? 'home' : 'none'} 
+                                            category={item.category}
+                                            heading={item.heading}
+                                            onCategoryClick={() => navigateTo('news')}
+                                        />
+                                    ))}
+                                    {recentNews.length === 0 && (
+                                        <p className="text-center py-8 text-gray-400 font-bold text-sm">公開中のお知らせはありません</p>
+                                    )}
+                                </div>
+                            )}
+                        </section>
+
+                        <section className="relative">
+                            <div className="absolute -right-4 top-0 text-6xl md:text-8xl font-black text-rose-100 opacity-20 select-none pointer-events-none -z-10 font-mono uppercase">BLOG</div>
+                            <div className="flex items-end justify-between mb-8 border-b-2 border-rose-100/40 pb-3">
+                                <div>
+                                    <h2 className="text-3xl md:text-4xl font-black text-gray-800 tracking-tight">ブログ</h2>
+                                    <p className="text-rose-500 text-xs tracking-[0.2em] mt-1 font-bold uppercase">TEAM DIARY</p>
+                                </div>
+                                <button onClick={() => navigateTo('blog')} className="text-gray-500 hover:text-rose-600 flex items-center text-xs md:text-sm font-bold transition-colors group">
+                                    すべて読む <Icons.ChevronRight size={16} className="transform group-hover:translate-x-1 transition-transform text-rose-400" />
+                                </button>
+                            </div>
+                            {isFetching ? (
+                                <div className="flex justify-center py-12">
+                                    <div className="animate-spin rounded-full h-8 w-8 border-4 border-rose-200 border-t-rose-500"></div>
+                                </div>
+                            ) : blogError ? (
+                                <div className="bg-rose-50/50 border border-rose-100 rounded-2xl p-6 text-center text-rose-700 font-bold flex items-center justify-center gap-2 shadow-inner text-sm">
+                                    <Icons.AlertCircle className="text-rose-500 shrink-0" size={18} />
+                                    <span>ブログが取得できませんでした。</span>
+                                </div>
+                            ) : (
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                    {recentBlogs.map(item => (
+                                        <div key={item.id} onClick={() => navigateTo('blog')} className="bg-white p-6 md:p-8 rounded-2xl shadow-sm border border-rose-100/60 hover:shadow-lg hover:border-rose-200 hover:-translate-y-1 active:scale-98 transition-all duration-300 cursor-pointer group flex flex-col h-full relative overflow-hidden">
+                                            <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-br from-rose-50 to-transparent rounded-bl-full -z-10 group-hover:scale-110 transition-transform duration-500"></div>
+                                            <div className="flex items-center gap-2 mb-3 flex-wrap">
+                                                <span className="text-[10px] font-mono text-gray-400 bg-gray-50 px-2 py-0.5 rounded">{item.date.substring(0, 10)}</span>
+                                                <span className="text-[10px] font-bold text-rose-500">{item.author}</span>
+                                                {item.heading && (
+                                                    <span className="text-[9px] px-1.5 py-0.5 bg-gray-100 text-gray-500 rounded border border-gray-200/50 font-bold">
+                                                        {item.heading}
+                                                    </span>
+                                                )}
+                                            </div>
+                                            <h3 className="font-bold text-lg text-gray-800 mb-3 group-hover:text-rose-600 transition-colors leading-snug">{item.title}</h3>
+                                            <p className="text-gray-500 text-xs md:text-sm line-clamp-3 leading-relaxed mt-auto">{item.content}</p>
+                                        </div>
+                                    ))}
+                                    {recentBlogs.length === 0 && (
+                                        <div className="col-span-full text-center py-8 text-gray-400 font-bold text-sm">公開中のブログはありません</div>
+                                    )}
+                                </div>
+                            )}
+                        </section>
+
+                        <section className="bg-gray-900 rounded-3xl p-6 md:p-12 shadow-2xl relative overflow-hidden text-white mx-1">
+                            <div className="absolute top-0 right-0 w-64 h-64 bg-rose-500/20 rounded-full blur-3xl -mr-16 -mt-16"></div>
+                            <div className="absolute bottom-0 left-0 w-48 h-48 bg-pink-500/20 rounded-full blur-3xl -ml-16 -mb-16"></div>
+                            <div className="relative z-10 flex flex-col sm:flex-row items-center gap-6 md:gap-10">
+                                <div className="w-24 h-24 md:w-36 md:h-36 rounded-full bg-gradient-to-br from-rose-400 to-pink-600 flex items-center justify-center text-5xl md:text-6xl shadow-xl flex-shrink-0 border-4 border-white/10">
+                                    🌸
+                                </div>
+                                <div className="text-center sm:text-left">
+                                    <p className="text-rose-400 font-bold tracking-[0.3em] text-[10px] md:text-xs mb-1">GENERAL LEADER</p>
+                                    <h2 className="text-2xl md:text-3xl font-black mb-3 tracking-tight">総長 山田 太郎</h2>
+                                    <p className="text-gray-300 leading-relaxed text-sm md:text-base font-medium whitespace-pre-wrap">「桃色E団を最高の団に！」全員が笑顔で終われる体育祭を目指して、全力で引っ張っていきます。熱い応援よろしくお願いします！</p>
+                                </div>
+                            </div>
+                        </section>
+
+                        <section>
+                            <div className="mb-8 text-center">
+                                <h2 className="text-3xl font-black text-gray-800 tracking-tight">役職紹介</h2>
+                                <p className="text-rose-500 text-xs tracking-[0.2em] mt-1 font-bold uppercase">CORE MEMBERS</p>
+                            </div>
+                            <div className="flex overflow-x-auto space-x-4 pb-6 snap-x snap-mandatory scrollbar-hide -mx-4 px-4">
+                                {shuffledPositions.map((pos, idx) => (
+                                    <div key={idx} className="snap-center shrink-0 w-64 bg-white rounded-2xl p-6 shadow-sm border border-rose-50 hover:shadow-md transition-all duration-300 group">
+                                        <div className="w-16 h-16 rounded-full bg-rose-50/50 flex items-center justify-center text-3xl mb-4 shadow-inner">
+                                            {pos.icon}
+                                        </div>
+                                        <p className="text-[10px] font-bold text-rose-500 tracking-widest mb-1.5 bg-rose-50 px-2.5 py-0.5 rounded-full inline-block">{pos.role}</p>
+                                        <h3 className="font-bold text-gray-800 text-lg mb-2">{pos.name}</h3>
+                                        <p className="text-xs text-gray-400 leading-relaxed">{pos.desc}</p>
+                                    </div>
+                                ))}
+                            </div>
+                        </section>
+                    </div>
+                </div>
+            );
+        };
+
+        const NewsPage = ({ news, newsError, isFetching }) => {
+            const [filter, setFilter] = useState('すべて');
+            const categories = ['すべて', '全体', '応援団', 'マスゲーム', 'マスコット'];
+
+            const filteredNews = useMemo(() => {
+                const now = new Date();
+                let result = news.filter(n => new Date(n.date.replace(' ', 'T')) <= now);
+                if (filter !== 'すべて') result = result.filter(n => n.category === filter);
+                return result.sort((a, b) => {
+                    const pinA = a.pin !== 'none' ? (a.pin === 'home' ? 2 : 1) : 0;
+                    const pinB = b.pin !== 'none' ? (b.pin === 'home' ? 2 : 1) : 0;
+                    if (pinA !== pinB) return pinB - pinA;
+                    return new Date(b.date.replace(' ', 'T')) - new Date(a.date.replace(' ', 'T'));
+                });
+            }, [news, filter]);
+
+            return (
+                <div className="max-w-4xl mx-auto px-4 pb-16">
+                    <PageHeader title="お知らせ" bgText="NEWS" />
+                    <div className="flex flex-wrap gap-2 justify-center mb-10">
+                        {categories.map(cat => (
+                            <button
+                                key={cat}
+                                onClick={() => setFilter(cat)}
+                                className={`px-5 py-2 rounded-full text-xs font-bold tracking-wider transition-all duration-300 ${
+                                    filter === cat 
+                                        ? 'bg-gray-900 text-white shadow-md' 
+                                        : 'bg-white text-gray-500 border border-rose-200 hover:border-gray-900 hover:text-gray-900'
+                                }`}
+                            >
+                                {cat}
+                            </button>
+                        ))}
+                    </div>
+
+                    {isFetching ? (
+                        <div className="flex justify-center py-16">
+                            <div className="animate-spin rounded-full h-8 w-8 border-4 border-rose-200 border-t-rose-500"></div>
+                        </div>
+                    ) : newsError ? (
+                        <div className="bg-rose-50/50 border border-rose-100 rounded-2xl p-8 text-center text-rose-700 font-bold flex flex-col items-center justify-center gap-2 shadow-inner text-sm">
+                            <Icons.AlertCircle size={32} className="text-rose-500 mb-2" />
+                            <p>お知らせを取得できませんでした</p>
+                        </div>
+                    ) : (
+                        <div className="space-y-3">
+                            {filteredNews.map((item, index) => (
+                                <div key={item.id} className="animate-fade-in-up" style={{ animationDelay: `${index * 0.05}s` }}>
+                                    <AccordionItem 
+                                        title={item.title}
+                                        subtitle={item.date}
+                                        content={item.content}
+                                        pinType={item.pin}
+                                        category={item.category}
+                                        heading={item.heading}
+                                    />
+                                </div>
+                            ))}
+                            {filteredNews.length === 0 && (
+                                <div className="text-center py-12 bg-white rounded-2xl border border-rose-50">
+                                    <p className="text-gray-400 font-bold text-sm">現在公開中のお知らせはありません</p>
+                                </div>
+                            )}
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        const BlogPage = ({ blogs, blogError, isFetching }) => {
+            const visibleBlogs = useMemo(() => {
+                const now = new Date();
+                return blogs.filter(b => new Date(b.date.replace(' ', 'T')) <= now);
+            }, [blogs]);
+
+            return (
+                <div className="max-w-4xl mx-auto px-4 pb-16">
+                    <PageHeader title="ブログ" bgText="BLOG" />
+                    {isFetching ? (
+                        <div className="flex justify-center py-16">
+                            <div className="animate-spin rounded-full h-8 w-8 border-4 border-rose-200 border-t-rose-500"></div>
+                        </div>
+                    ) : blogError ? (
+                        <div className="bg-rose-50/50 border border-rose-100 rounded-2xl p-8 text-center text-rose-700 font-bold flex flex-col items-center justify-center gap-2 shadow-inner text-sm">
+                            <Icons.AlertCircle size={32} className="text-rose-500 mb-2" />
+                            <p>ブログを取得できませんでした</p>
+                        </div>
+                    ) : (
+                        <div className="space-y-4">
+                            {visibleBlogs.sort((a,b) => new Date(b.date.replace(' ', 'T')) - new Date(a.date.replace(' ', 'T'))).map((item, index) => (
+                                 <div key={item.id} className="animate-fade-in-up" style={{ animationDelay: `${index * 0.05}s` }}>
+                                    <AccordionItem 
+                                        title={item.title}
+                                        subtitle={`${item.date} | ${item.author}`}
+                                        content={item.content}
+                                        pinType={item.pin}
+                                        heading={item.heading}
+                                    />
+                                </div>
+                            ))}
+                            {visibleBlogs.length === 0 && (
+                                <div className="text-center py-12 bg-white rounded-2xl border border-rose-50">
+                                    <p className="text-gray-400 font-bold text-sm">公開中の記事はありません</p>
+                                </div>
+                            )}
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        const SectionHero = ({ title, bgText, themeColor }) => {
+            const themes = {
+                red: { bg: 'from-red-200 via-rose-50 to-red-100', textMain: 'text-red-900', blob1: 'bg-red-300', blob2: 'bg-rose-300' },
+                pink: { bg: 'from-fuchsia-200 via-pink-50 to-purple-100', textMain: 'text-fuchsia-900', blob1: 'bg-fuchsia-300', blob2: 'bg-pink-300' },
+                orange: { bg: 'from-amber-200 via-orange-50 to-yellow-100', textMain: 'text-orange-900', blob1: 'bg-amber-300', blob2: 'bg-yellow-300' }
+            };
+            const theme = themes[themeColor] || themes.red;
+
+            const renderShape = () => {
+                switch(themeColor) {
+                    case 'red': 
+                        return <div className="absolute bottom-0 left-0 right-0 h-10 bg-[#FFF5F8]" style={{ clipPath: 'polygon(0 100%, 100% 100%, 100% 0)' }}></div>;
+                    case 'pink': 
+                        return (
+                            <svg className="absolute bottom-0 left-0 right-0 w-full text-[#FFF5F8]" style={{ height: 'auto', minHeight: '30px' }} viewBox="0 0 1440 320" preserveAspectRatio="none">
+                                <path fill="currentColor" d="M0,160L48,176C96,192,192,224,288,208C384,192,480,128,576,133.3C672,139,768,213,864,229.3C960,245,1056,203,1152,181.3C1248,160,1344,160,1392,160L1440,160L1440,320L1392,320C1344,320,1248,320,1152,320C1056,320,960,320,864,320C768,320,672,320,576,320C480,320,384,320,288,320C192,320,96,320,48,320L0,320Z"></path>
+                            </svg>
+                        );
+                    case 'orange': 
+                        return (
+                            <svg className="absolute bottom-0 left-0 right-0 w-full text-[#FFF5F8]" style={{ height: 'auto', minHeight: '40px' }} viewBox="0 0 1440 320" preserveAspectRatio="none">
+                                 <path fill="currentColor" d="M0,288L1440,128L1440,320L0,320Z"></path>
+                            </svg>
+                        );
+                    default:
+                        return <div className="absolute bottom-0 left-0 right-0 h-10 bg-[#FFF5F8]" style={{ clipPath: 'polygon(0 100%, 100% 100%, 100% 0)' }}></div>;
+                }
+            }
+
+            return (
+                <section className="relative h-[45vh] flex items-center justify-center bg-gradient-to-br overflow-hidden mb-12">
+                    <div className="absolute inset-0 bg-gradient-to-tr from-pink-400/40 via-rose-300/40 to-amber-300/40 animate-monyu-grad" />
+                    <div className="absolute inset-0 bg-white/30 backdrop-blur-[2px]"></div>
+                    <div className={`absolute top-0 right-1/4 w-[40vw] h-[40vw] rounded-full mix-blend-multiply filter blur-[80px] opacity-40 animate-monyu ${theme.blob1}`}></div>
+                    <div className={`absolute bottom-0 left-1/4 w-[45vw] h-[45vw] rounded-full mix-blend-multiply filter blur-[100px] opacity-30 animate-monyu animation-delay-2000 ${theme.blob2}`}></div>
+                    <div className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-[18vw] font-black opacity-[0.05] whitespace-nowrap select-none pointer-events-none z-0 tracking-tighter uppercase font-mono ${theme.textMain}`}>
+                        {bgText}
+                    </div>
+                    {renderShape()}
+                    <div className="relative z-10 flex flex-col items-center px-4 max-w-5xl mx-auto w-full animate-fade-in-up">
+                        <h1 className={`text-4xl md:text-7xl lg:text-8xl font-black tracking-tighter drop-shadow-sm mb-2 ${theme.textMain} text-center`}>
+                            {title}
+                        </h1>
+                    </div>
+                </section>
+            );
+        };
+
+        const SectionPage = ({ title, bgText, news, category, themeColor, renderExtra, newsError, isFetching }) => {
+            const sectionNews = useMemo(() => {
+                const now = new Date();
+                return news
+                    .filter(n => n.category === category && new Date(n.date.replace(' ', 'T')) <= now)
+                    .sort((a, b) => new Date(b.date.replace(' ', 'T')) - new Date(a.date.replace(' ', 'T')));
+            }, [news, category]);
+
+            const textColor = { red: 'text-red-500', pink: 'text-pink-500', orange: 'text-orange-500' }[themeColor];
+            const gradientBg = {
+                red: 'from-rose-50/90 via-red-50/50 to-white border-red-100',
+                pink: 'from-fuchsia-50/90 via-pink-50/50 to-white border-pink-100',
+                orange: 'from-amber-50/90 via-orange-50/50 to-white border-orange-100'
+            }[themeColor];
+            const decorationBlob = { red: 'bg-red-200/40', pink: 'bg-pink-200/40', orange: 'bg-amber-200/40' }[themeColor];
+
+            return (
+                <div className="pb-16 overflow-x-hidden">
+                    <SectionHero title={title} bgText={bgText} themeColor={themeColor} />
+                    <div className="max-w-5xl mx-auto px-4 space-y-16 md:space-y-24">
+                        <section className={`p-6 md:p-12 rounded-3xl bg-gradient-to-br ${gradientBg} border shadow-lg relative overflow-hidden backdrop-blur-sm mx-1`}>
+                            <div className={`absolute -right-16 -top-16 w-64 h-64 rounded-full blur-3xl opacity-60 ${decorationBlob}`}></div>
+                            <div className={`absolute -left-16 -bottom-16 w-64 h-64 rounded-full blur-3xl opacity-60 ${decorationBlob}`}></div>
+                            <div className="relative z-10">
+                                 <div className="flex items-end justify-between mb-8 border-b-2 border-rose-100/60 pb-3">
+                                    <div>
+                                        <h2 className="text-2xl md:text-3xl font-black text-gray-800 tracking-tight">お知らせ</h2>
+                                        <p className={`${textColor} text-[10px] md:text-sm tracking-[0.2em] mt-1 font-bold uppercase`}>{category} NEWS</p>
+                                    </div>
+                                </div>
+                                {isFetching ? (
+                                    <div className="flex justify-center py-8">
+                                        <div className="animate-spin rounded-full h-8 w-8 border-4 border-rose-200 border-t-rose-500"></div>
+                                    </div>
+                                ) : newsError ? (
+                                    <div className="bg-red-50/80 backdrop-blur-sm border border-red-100 rounded-2xl p-6 text-center text-red-700 font-bold flex items-center justify-center gap-2 shadow-inner text-sm">
+                                        <Icons.AlertCircle size={18} />
+                                        <span>お知らせが取得できませんでした。</span>
+                                    </div>
+                                ) : sectionNews.length > 0 ? (
+                                    <div className="space-y-3">
+                                        {sectionNews.slice(0, 3).map(item => (
+                                             <AccordionItem key={item.id} title={item.title} subtitle={item.date} content={item.content} pinType={item.pin} category={category} heading={item.heading} />
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <div className="text-center py-12 bg-white/80 rounded-2xl border border-gray-100 shadow-sm">
+                                         <p className="text-gray-400 font-bold text-sm">公開中のお知らせはありません</p>
+                                    </div>
+                                )}
+                            </div>
+                        </section>
+                        <section className="px-1">{renderExtra()}</section>
+                    </div>
+                </div>
+            );
+        };
+
+        const AdminPage = ({ news, setNews, blogs, setBlogs, sectionInfo, setSectionInfo, onTriggerToast }) => {
+            const [isAuthenticated, setIsAuthenticated] = useState(() => {
+                return localStorage.getItem('admin_authenticated') === 'true';
+            });
+            const [password, setPassword] = useState('');
+            const [activeTab, setActiveTab] = useState('add');
+            const [targetType, setTargetType] = useState('news');
+            const [isLoading, setIsLoading] = useState(false);
+            const [confirmDeleteId, setConfirmDeleteId] = useState(null);
+            const [formData, setFormData] = useState({ id: null, pin: 'none', heading: '', date: '', category: '全体', author: '', title: '', content: '', studentId: '' });
+            const [sectionData, setSectionData] = useState({});
+
+            useEffect(() => {
+                const infoMap = {};
+                sectionInfo.forEach(info => { infoMap[info.id] = { ...info }; });
+                setSectionData(infoMap);
+            }, [sectionInfo]);
+
+            const handleLogin = (e) => {
+                e.preventDefault();
+                if (password === 'momoiro') {
+                    setIsAuthenticated(true);
+                    localStorage.setItem('admin_authenticated', 'true');
+                    onTriggerToast('ログインに成功しました。', 'success');
+                } else {
+                    onTriggerToast('パスワードが間違っています。', 'error');
+                }
+            };
+
+            const handleLogout = () => {
+                setIsAuthenticated(false);
+                localStorage.removeItem('admin_authenticated');
+                onTriggerToast('ログアウトしました。', 'success');
+            };
+
+            const resetForm = () => {
+                const now = new Date();
+                const tzoffset = now.getTimezoneOffset() * 60000;
+                const localISOTime = (new Date(now - tzoffset)).toISOString().slice(0, 16);
+                setFormData({ id: null, pin: 'none', heading: '', date: localISOTime, category: '全体', author: '', title: '', content: '', studentId: '' });
+            };
+
+            useEffect(() => { setConfirmDeleteId(null); }, [activeTab, targetType]);
+
+            const saveToGAS = async (data, action, typeOverride) => {
+                setIsLoading(true);
+                const type = typeOverride || targetType;
+                const isEditing = data.id !== null && data.id !== undefined && String(data.id).trim() !== '';
+
+                try {
+                    if (data.date) data.date = data.date.replace('T', ' ');
+                    const response = await fetch(GAS_URL, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                        body: JSON.stringify({ action, type, data }),
+                    });
+                    if (!response.ok) throw new Error(`GASエラー: ${response.status}`);
+                    const resText = await response.text();
+                    let resJson;
+                    try { resJson = JSON.parse(resText); } catch (e) { throw new Error('レスポンスのパースに失敗しました。'); }
+
+                    if (resJson && resJson.status === 'success') {
+                        if (action === 'save') {
+                            if (type === 'news') {
+                                if (isEditing) setNews(news.map(n => String(n.id) === String(resJson.data.id) ? resJson.data : n));
+                                else setNews([resJson.data, ...news]);
+                            } else if (type === 'blog') {
+                                if (isEditing) setBlogs(blogs.map(b => String(b.id) === String(resJson.data.id) ? resJson.data : b));
+                                else setBlogs([resJson.data, ...blogs]);
+                            } else if (type === 'section') {
+                                setSectionInfo(sectionInfo.map(info => String(info.id) === String(resJson.data.id) ? resJson.data : info));
+                            }
+                            onTriggerToast('スプレッドシートと同期しました！', 'success');
+                            if (type !== 'section') resetForm();
+                        } else if (action === 'delete') {
+                            if (type === 'news') setNews(news.filter(n => String(n.id) !== String(data.id)));
+                            else if (type === 'blog') setBlogs(blogs.filter(b => String(b.id) !== String(data.id)));
+                            onTriggerToast('削除を完了し、スプレッドシートに同期しました。', 'success');
+                            setConfirmDeleteId(null);
+                        }
+                    } else {
+                        throw new Error(resJson.message || '不明なサーバーエラー。');
+                    }
+                } catch (error) {
+                    onTriggerToast(`同期エラー: ${error.message}`, 'error');
+                } finally {
+                    setIsLoading(false);
+                }
+            };
+
+            const handleSave = (e) => {
+                e.preventDefault();
+                const isEditing = formData.id !== null && formData.id !== undefined && String(formData.id).trim() !== '';
+                saveToGAS({ ...formData, id: isEditing ? formData.id : null }, 'save');
+            };
+
+            const handleEdit = (item) => {
+                let formattedDate = item.date;
+                if (formattedDate) {
+                    const d = new Date(formattedDate.replace(' ', 'T'));
+                    if (!isNaN(d.getTime())) {
+                        const tzoffset = d.getTimezoneOffset() * 60000;
+                        formattedDate = (new Date(d.getTime() - tzoffset)).toISOString().slice(0, 16);
+                    }
+                }
+                setFormData({ ...item, date: formattedDate });
+                setActiveTab('add');
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            };
+
+            const handleDeleteClick = (id) => {
+                if (confirmDeleteId === id) {
+                    saveToGAS({ id }, 'delete');
+                } else {
+                    setConfirmDeleteId(id);
+                    setTimeout(() => { setConfirmDeleteId(prev => prev === id ? null : prev); }, 3000);
+                }
+            };
+
+            const handleSectionInfoChange = (id, field, value) => {
+                setSectionData(prev => ({ ...prev, [id]: { ...prev[id], [field]: value } }));
+            };
+
+            if (!isAuthenticated) {
+                return (
+                    <div className="min-h-[80vh] flex items-center justify-center px-4 relative">
+                        <div className="bg-white p-6 md:p-14 rounded-3xl shadow-xl w-full max-w-sm border border-rose-50 relative z-10 animate-fade-in-up">
+                            <div className="w-16 h-16 bg-gray-900 rounded-full flex items-center justify-center mx-auto mb-6 shadow-inner">
+                                <Icons.Lock className="text-white" size={24} />
+                            </div>
+                            <h2 className="text-2xl font-black text-gray-800 mb-1 text-center tracking-tight">管理者ログイン</h2>
+                            <p className="text-gray-400 mb-8 text-xs text-center font-bold tracking-widest">ADMIN DASHBOARD</p>
+                            <form onSubmit={handleLogin} className="space-y-4">
+                                <input 
+                                    type="password" 
+                                    value={password} 
+                                    onChange={(e) => setPassword(e.target.value)}
+                                    className="w-full px-4 py-3 rounded-xl bg-gray-50 border border-gray-200 focus:outline-none focus:ring-2 focus:ring-rose-400 focus:bg-white transition-all text-center tracking-widest font-bold text-gray-800"
+                                    placeholder="PASSWORD"
+                                />
+                                <button type="submit" className="w-full py-3 bg-gray-900 hover:bg-rose-500 text-white font-bold rounded-xl transition-all shadow-md active:scale-98 tracking-widest text-sm">
+                                    LOGIN
+                                </button>
+                            </form>
+                            <p className="text-[10px] text-center text-gray-400 mt-4">パスワード: momoiro</p>
+                        </div>
+                    </div>
+                );
+            }
+
+            const itemsList = targetType === 'news' ? news : blogs;
+
+            return (
+                <div className="max-w-6xl mx-auto px-2 md:px-4 pb-16 relative">
+                    <div className="flex flex-col sm:flex-row justify-between items-center mb-4 sm:mb-6 gap-2">
+                        <PageHeader title="管理画面" bgText="ADMIN" />
+                        <button onClick={handleLogout} className="bg-red-50 hover:bg-red-100 text-red-600 px-4 py-2 rounded-xl font-bold text-xs tracking-wider transition-colors flex items-center gap-1.5 border border-red-100">
+                            ログアウト
+                        </button>
+                    </div>
+
+                    <div className="bg-white rounded-2xl shadow-xl border border-rose-50 overflow-hidden relative mx-1">
+                        {isLoading && (
+                            <div className="absolute inset-0 bg-white/80 backdrop-blur-sm z-50 flex items-center justify-center">
+                                <div className="animate-spin rounded-full h-10 w-10 border-4 border-rose-200 border-t-rose-500"></div>
+                            </div>
+                        )}
+
+                        <div className="bg-gray-50 border-b border-gray-100 p-3 md:p-6 flex flex-col md:flex-row justify-between items-center gap-3">
+                            <div className="flex bg-gray-200/50 rounded-xl p-1 shadow-inner w-full md:w-auto overflow-x-auto">
+                                <button onClick={() => {setTargetType('news'); setActiveTab('add');}} className={`flex-1 md:flex-none px-4 py-2.5 rounded-lg font-bold text-xs transition-all whitespace-nowrap ${targetType === 'news' && activeTab !== 'section' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'}`}>お知らせ</button>
+                                <button onClick={() => {setTargetType('blog'); setActiveTab('add');}} className={`flex-1 md:flex-none px-4 py-2.5 rounded-lg font-bold text-xs transition-all whitespace-nowrap ${targetType === 'blog' && activeTab !== 'section' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'}`}>ブログ</button>
+                                <button onClick={() => setActiveTab('section')} className={`flex-1 md:flex-none px-4 py-2.5 rounded-lg font-bold text-xs transition-all whitespace-nowrap ${activeTab === 'section' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'}`}>パート情報</button>
+                            </div>
+                            {activeTab !== 'section' && (
+                                <div className="flex space-x-2 w-full md:w-auto">
+                                    <button onClick={() => {setActiveTab('add'); resetForm();}} className={`flex-1 md:flex-none flex justify-center items-center gap-1.5 px-3 py-2.5 rounded-xl font-bold text-xs transition-all ${activeTab === 'add' && !formData.id ? 'bg-gray-900 text-white' : 'bg-white text-gray-600 border border-gray-200'}`}>
+                                        <Icons.Plus size={16} /> 新規作成
+                                    </button>
+                                    <button onClick={() => setActiveTab('edit')} className={`flex-1 md:flex-none flex justify-center items-center gap-1.5 px-3 py-2.5 rounded-xl font-bold text-xs transition-all ${activeTab === 'edit' ? 'bg-gray-900 text-white' : 'bg-white text-gray-600 border border-gray-200'}`}>
+                                        <Icons.Edit size={16} /> 一覧
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="p-4 md:p-8">
+                            {activeTab === 'section' ? (
+                                 <div className="space-y-6 animate-fade-in-up">
+                                    <h3 className="text-xl font-black text-gray-800 border-b border-gray-100 pb-3">パート情報の編集</h3>
+                                    {sectionInfo.map(info => {
+                                        const data = sectionData[info.id] || info;
+                                        return (
+                                            <div key={info.id} className="bg-gray-50 p-4 md:p-6 rounded-2xl border border-gray-200 space-y-3">
+                                                <h4 className="font-bold text-sm text-rose-500 mb-2">{info.category}ページ</h4>
+                                                <div className="grid md:grid-cols-2 gap-3">
+                                                     <div>
+                                                         <label className="block text-[10px] font-bold text-gray-500 mb-1">見出し</label>
+                                                         <input type="text" value={data.title} onChange={e => handleSectionInfoChange(info.id, 'title', e.target.value)} className="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 focus:outline-none text-gray-800 bg-white" />
+                                                     </div>
+                                                     <div>
+                                                         <label className="block text-[10px] font-bold text-gray-500 mb-1">役職・署名</label>
+                                                         <input type="text" value={data.author} onChange={e => handleSectionInfoChange(info.id, 'author', e.target.value)} className="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 focus:outline-none text-gray-800 bg-white" />
+                                                     </div>
+                                                </div>
+                                                <div>
+                                                    <label className="block text-[10px] font-bold text-gray-500 mb-1">本文</label>
+                                                    <textarea rows={3} value={data.content} onChange={e => handleSectionInfoChange(info.id, 'content', e.target.value)} className="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 focus:outline-none resize-y text-gray-800 bg-white"></textarea>
+                                                </div>
+                                                <div className="text-right">
+                                                     <button onClick={() => saveToGAS(sectionData[info.id], 'save', 'section')} className="bg-gray-900 text-white px-4 py-2 rounded-lg text-xs font-bold active:scale-95 transition-all">
+                                                         保存する
+                                                     </button>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                 </div>
+                            ) : activeTab === 'add' ? (
+                                 <div className="relative p-[1px] rounded-2xl bg-gradient-to-br from-rose-300 via-pink-200 to-orange-200 shadow-sm animate-fade-in-up">
+                                     <form onSubmit={handleSave} className="space-y-4 md:space-y-6 bg-white/95 backdrop-blur-md p-4 md:p-8 rounded-[15px]">
+                                         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between border-b border-gray-100 pb-3 gap-2">
+                                             <h3 className="text-lg font-black text-gray-800">
+                                                 {formData.id ? '記事の編集' : '新規記事の作成'}
+                                                 <span className="text-[10px] font-bold text-rose-500 ml-2 tracking-widest bg-rose-50 px-2.5 py-1 rounded-full whitespace-nowrap inline-block">
+                                                     ({targetType === 'news' ? 'お知らせ' : 'ブログ'})
+                                                 </span>
+                                             </h3>
+                                             {formData.id && (
+                                                 <button type="button" onClick={resetForm} className="text-xs font-bold text-gray-400 hover:text-gray-900 transition-colors whitespace-nowrap">
+                                                     新規作成に戻る
+                                                 </button>
+                                             )}
+                                         </div>
+
+                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-gray-800">
+                                             <div className="min-w-0">
+                                                 <label className="block text-[10px] font-bold text-gray-500 mb-1.5 uppercase">公開日時</label>
+                                                 <div className="flex gap-1.5">
+                                                     <input type="datetime-local" required value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} className="flex-grow min-w-0 px-3 py-2 rounded-xl bg-gray-50 border border-gray-200 focus:outline-none focus:bg-white text-xs font-mono" />
+                                                     <button 
+                                                         type="button" 
+                                                         onClick={() => {
+                                                             const now = new Date();
+                                                             const tzoffset = now.getTimezoneOffset() * 60000;
+                                                             const localISOTime = (new Date(now - tzoffset)).toISOString().slice(0, 16);
+                                                             setFormData(prev => ({ ...prev, date: localISOTime }));
+                                                         }}
+                                                         className="px-3 bg-rose-50 text-rose-600 font-bold rounded-xl text-[10px] border border-rose-100 whitespace-nowrap active:scale-95"
+                                                     >
+                                                         現在
+                                                     </button>
+                                                 </div>
+                                             </div>
+                                             <div className="min-w-0">
+                                                 <label className="block text-[10px] font-bold text-gray-500 mb-1.5 uppercase">ピン止め</label>
+                                                 <select value={formData.pin} onChange={e => setFormData({...formData, pin: e.target.value})} className="w-full px-3 py-2 text-xs rounded-xl bg-gray-50 border border-gray-200 focus:outline-none">
+                                                     <option value="none">なし</option>
+                                                     <option value="home">ホームでピン止め</option>
+                                                     <option value="local">各ページでピン止め</option>
+                                                 </select>
+                                             </div>
+                                             <div className="min-w-0">
+                                                 <label className="block text-[10px] font-bold text-gray-500 mb-1.5 uppercase">タグ・見出し (短いラベル)</label>
+                                                 <input type="text" value={formData.heading || ''} onChange={e => setFormData({...formData, heading: e.target.value})} className="w-full px-3 py-2 text-xs rounded-xl bg-gray-50 border border-gray-200 focus:outline-none" placeholder="重要、連絡、募集、意気込みなど" />
+                                             </div>
+                                             {targetType === 'news' ? (
+                                                 <div className="min-w-0">
+                                                     <label className="block text-[10px] font-bold text-gray-500 mb-1.5 uppercase">カテゴリー</label>
+                                                     <select value={formData.category} onChange={e => setFormData({...formData, category: e.target.value})} className="w-full px-3 py-2 text-xs rounded-xl bg-gray-50 border border-gray-200 focus:outline-none">
+                                                         <option value="全体">全体</option>
+                                                         <option value="応援団">応援団</option>
+                                                         <option value="マスゲーム">マスゲーム</option>
+                                                         <option value="マスコット">マスコット</option>
+                                                     </select>
+                                                 </div>
+                                             ) : (
+                                                 <div className="min-w-0">
+                                                     <label className="block text-[10px] font-bold text-gray-500 mb-1.5 uppercase">執筆者</label>
+                                                     <input type="text" required value={formData.author || ''} onChange={e => setFormData({...formData, author: e.target.value})} className="w-full px-3 py-2 text-xs rounded-xl bg-gray-50 border border-gray-200 focus:outline-none" placeholder="例: 総長 山田" />
+                                                 </div>
+                                             )}
+                                         </div>
+
+                                         <div className="min-w-0 text-gray-800">
+                                             <label className="block text-[10px] font-bold text-gray-500 mb-1.5 uppercase">タイトル</label>
+                                             <input type="text" required value={formData.title || ''} onChange={e => setFormData({...formData, title: e.target.value})} className="w-full px-3 py-2 text-xs rounded-xl bg-gray-50 border border-gray-200 focus:outline-none" placeholder="タイトルを入力" />
+                                         </div>
+                                         <div className="min-w-0 text-gray-800">
+                                             <label className="block text-[10px] font-bold text-gray-500 mb-1.5 uppercase">本文</label>
+                                             <textarea required value={formData.content || ''} onChange={e => setFormData({...formData, content: e.target.value})} rows={8} className="w-full px-3 py-2 text-xs rounded-xl bg-gray-50 border border-gray-200 focus:outline-none resize-y" placeholder="本文を入力..."></textarea>
+                                         </div>
+                                         <div className="min-w-0 text-gray-800">
+                                             <label className="block text-[10px] font-bold text-gray-500 mb-1.5 uppercase">出席番号</label>
+                                             <input type="text" required value={formData.studentId || ''} onChange={e => setFormData({...formData, studentId: e.target.value})} className="w-full md:w-1/3 px-3 py-2 text-xs rounded-xl bg-gray-50 border border-gray-200 focus:outline-none" placeholder="例: 12" />
+                                         </div>
+                                         
+                                         <div className="pt-4 flex justify-end">
+                                             <button type="submit" className="w-full sm:w-auto flex justify-center items-center gap-2 bg-gradient-to-r from-gray-900 to-gray-800 hover:from-rose-500 hover:to-pink-600 text-white font-bold py-3 px-8 rounded-xl shadow-md active:scale-95 transition-all text-sm">
+                                                 <Icons.Save size={16} /> 
+                                                 <span>{formData.id ? '更新を保存' : '新しく追加'}</span>
+                                             </button>
+                                         </div>
+                                     </form>
+                                 </div>
+                            ) : (
+                                <div className="overflow-x-auto -mx-4 px-4 scrollbar-thin">
+                                    <table className="w-full text-left border-collapse min-w-[700px]">
+                                        <thead>
+                                            <tr className="bg-gray-50 border-b-2 border-gray-200 text-gray-600">
+                                                <th className="p-3 text-[10px] font-bold uppercase">Date</th>
+                                                <th className="p-3 text-[10px] font-bold uppercase">Status</th>
+                                                <th className="p-3 text-[10px] font-bold uppercase">Pin</th>
+                                                <th className="p-3 text-[10px] font-bold uppercase">Title</th>
+                                                <th className="p-3 text-[10px] font-bold uppercase">{targetType === 'news' ? 'Category' : 'Author'}</th>
+                                                <th className="p-3 text-[10px] font-bold uppercase">Tag</th>
+                                                <th className="p-3 text-[10px] font-bold uppercase text-right">Actions</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="text-gray-700">
+                                            {itemsList.sort((a,b) => new Date(b.date.replace(' ', 'T')) - new Date(a.date.replace(' ', 'T'))).map(item => {
+                                                const isFuture = new Date(item.date.replace(' ', 'T')) > new Date();
+                                                return (
+                                                    <tr key={item.id} className="border-b border-gray-100 hover:bg-rose-50/20 transition-colors">
+                                                        <td className="p-3 text-xs font-mono text-gray-500">{item.date}</td>
+                                                        <td className="p-3">
+                                                            {isFuture ? (
+                                                                <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-amber-50 text-amber-600 rounded-full text-[9px] font-bold border border-amber-200">
+                                                                    <Icons.Clock size={10} /> 予約中
+                                                                </span>
+                                                            ) : (
+                                                                <span className="px-2 py-0.5 bg-green-50 text-green-600 rounded-full text-[9px] font-bold border border-green-200">
+                                                                    公開中
+                                                                </span>
+                                                            )}
+                                                        </td>
+                                                        <td className="p-3">
+                                                            {item.pin !== 'none' && <Icons.Pin size={14} className={item.pin === 'home' ? 'text-rose-500 fill-rose-500' : 'text-gray-300'} />}
+                                                        </td>
+                                                        <td className="p-3 font-bold text-xs md:text-sm text-gray-800 max-w-[200px] truncate">{item.title}</td>
+                                                        <td className="p-3 text-xs">
+                                                            <span className="bg-white border border-gray-200 px-2 py-0.5 rounded text-[10px]">{targetType === 'news' ? item.category : item.author}</span>
+                                                        </td>
+                                                        <td className="p-3 text-[10px]">
+                                                            {item.heading ? (
+                                                                <span className="px-1.5 py-0.5 bg-gray-100 text-gray-600 border border-gray-200 rounded">{item.heading}</span>
+                                                            ) : <span className="text-gray-300">-</span>}
+                                                        </td>
+                                                        <td className="p-3 text-right space-x-1.5 whitespace-nowrap">
+                                                            <button onClick={() => handleEdit(item)} className="p-1.5 bg-white border text-gray-600 rounded-lg active:scale-95 hover:bg-gray-900 hover:text-white transition-all"><Icons.Edit size={14}/></button>
+                                                            <button 
+                                                                onClick={() => handleDeleteClick(item.id)} 
+                                                                className={`p-1.5 rounded-lg active:scale-95 transition-all ${confirmDeleteId === item.id ? 'bg-red-500 text-white' : 'bg-white border text-red-500 hover:bg-red-50'}`}
+                                                            >
+                                                                <Icons.Trash2 size={14}/>
+                                                            </button>
+                                                        </td>
+                                                    </tr>
+                                                );
+                                            })}
+                                            {itemsList.length === 0 && (
+                                                <tr><td colSpan="7" className="p-8 text-center text-gray-400 font-bold text-xs">データがありません</td></tr>
+                                            )}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        function App() {
+            const [currentPage, setCurrentPage] = useState('home');
+            const [isMenuOpen, setIsMenuOpen] = useState(false);
+            const [isScrolled, setIsScrolled] = useState(false);
+
+            const [newsList, setNewsList] = useState([]);
+            const [blogList, setBlogList] = useState([]);
+            const [sectionInfo, setSectionInfo] = useState(DEFAULT_SECTION_INFO);
+            const [isFetching, setIsFetching] = useState(true);
+            const [toast, setToast] = useState(null);
+
+            const [newsError, setNewsError] = useState(null);
+            const [blogError, setBlogError] = useState(null);
+
+            const handleTriggerToast = (message, type) => { setToast({ message, type }); };
+
+            useEffect(() => {
+                const fetchData = async () => {
+                    try {
+                        setIsFetching(true);
+                        setNewsError(null);
+                        setBlogError(null);
+                        const response = await fetch(GAS_URL, { redirect: 'follow' });
+                        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                        const textData = await response.text();
+                        if (textData.trim().startsWith('<')) throw new Error('Authorization required');
+                        
+                        let data = JSON.parse(textData);
+                        setNewsList(Array.isArray(data.news) ? data.news : []);
+                        setBlogList(Array.isArray(data.blogs) ? data.blogs : []);
+                        setSectionInfo(Array.isArray(data.sectionInfo) && data.sectionInfo.length > 0 ? data.sectionInfo : DEFAULT_SECTION_INFO);
+                    } catch (error) {
+                        console.warn("GAS load failed", error);
+                        setNewsError(error.message);
+                        setBlogError(error.message);
+                        setSectionInfo(DEFAULT_SECTION_INFO);
+                    } finally {
+                        setIsFetching(false);
+                    }
+                };
+                fetchData();
+
+                const handleScroll = () => { setIsScrolled(window.scrollY > 20); };
+                window.addEventListener('scroll', handleScroll);
+                return () => window.removeEventListener('scroll', handleScroll);
+            }, []);
+
+            const navigateTo = (page) => {
+                setCurrentPage(page);
+                setIsMenuOpen(false);
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            };
+
+            const menuItems = [
+                { id: 'home', label: 'ホーム' },
+                { id: 'news', label: 'お知らせ' },
+                { id: 'blog', label: 'ブログ' },
+                { id: 'ouen', label: '応援団' },
+                { id: 'mass', label: 'マスゲーム' },
+                { id: 'mascot', label: 'マスコット' },
+                { id: 'admin', label: '管理者用' },
+            ];
+
+            return (
+                <div className="min-h-screen bg-[#FFF5F8] selection:bg-rose-200 selection:text-rose-900 text-gray-800 overflow-x-hidden flex flex-col pb-safe">
+                    {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
+
+                    {/* セーフエリア保護を追加 */}
+                    <nav className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 pt-safe ${isScrolled ? 'bg-white/95 backdrop-blur-md shadow-sm py-2' : 'bg-transparent py-4'}`}>
+                        <div className="max-w-7xl mx-auto px-4 md:px-8 flex items-center justify-between">
+                            <button onClick={() => navigateTo('home')} className="flex items-center gap-1.5 group">
+                                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-rose-400 to-pink-600 flex items-center justify-center text-white font-bold transition-transform group-hover:rotate-12">🌸</div>
+                                <span className="text-lg md:text-xl font-black tracking-tighter text-gray-900">桃色E団</span>
+                            </button>
+                            
+                            <div className="hidden lg:flex space-x-1 bg-white/50 backdrop-blur-md p-1 rounded-full border border-rose-100/60 shadow-sm">
+                                {menuItems.map(item => (
+                                    <button
+                                        key={item.id}
+                                        onClick={() => navigateTo(item.id)}
+                                        className={`px-5 py-2 rounded-full text-xs font-bold tracking-widest transition-all duration-300 ${
+                                            currentPage === item.id ? 'bg-rose-500 text-white shadow-md' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100/50'
+                                        }`}
+                                    >
+                                        {item.label}
+                                    </button>
+                                ))}
+                            </div>
+
+                            <button className="lg:hidden p-2 text-gray-900 bg-white rounded-full shadow-sm border border-rose-100 active:scale-95" onClick={() => setIsMenuOpen(!isMenuOpen)}>
+                                {isMenuOpen ? <Icons.X size={20} /> : <Icons.Menu size={20} />}
+                            </button>
+                        </div>
+                    </nav>
+
+                    {/* モバイル用サイドメニュー */}
+                    <div className={`fixed inset-0 bg-white z-40 lg:hidden transition-transform duration-300 ease-in-out pt-safe-top ${isMenuOpen ? 'translate-x-0' : 'translate-x-full'}`}>
+                        <div className="flex flex-col h-full pt-20 px-8 space-y-4">
+                            {menuItems.map(item => (
+                                <button key={item.id} onClick={() => navigateTo(item.id)} className={`text-2xl font-black tracking-tighter text-left py-2 border-b border-gray-50 transition-colors ${currentPage === item.id ? 'text-rose-500' : 'text-gray-300 hover:text-gray-900'}`}>
+                                    {item.label}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+
+                    <main className="flex-grow pt-safe-top">
+                        {currentPage === 'home' && <HomePage navigateTo={navigateTo} news={newsList} blogs={blogList} newsError={newsError} blogError={blogError} isFetching={isFetching} />}
+                        {currentPage === 'news' && <NewsPage news={newsList} newsError={newsError} isFetching={isFetching} />}
+                        {currentPage === 'blog' && <BlogPage blogs={blogList} blogError={blogError} isFetching={isFetching} />}
+                        
+                        {currentPage === 'ouen' && (
+                            <SectionPage 
+                                title="応援団" bgText="CHEER" news={newsList} category="応援団" themeColor="red" newsError={newsError} isFetching={isFetching}
+                                renderExtra={() => {
+                                    const info = sectionInfo.find(i => i.id === 'ouen-info') || DEFAULT_SECTION_INFO[0];
+                                    return (
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-fade-in-up">
+                                             <div className="bg-white rounded-3xl p-6 md:p-10 border border-rose-100 shadow-md hover:-translate-y-1 transition-transform duration-300 relative overflow-hidden group">
+                                                 <div className="absolute top-0 right-0 w-24 h-24 bg-red-50 rounded-bl-full -z-10 group-hover:scale-150 transition-transform duration-500"></div>
+                                                 <div className="w-12 h-12 bg-gradient-to-br from-red-500 to-rose-600 text-white rounded-xl flex items-center justify-center mb-4 shadow-md rotate-3">
+                                                     <Icons.Download size={20} />
+                                                 </div>
+                                                 <h3 className="text-xl font-black text-gray-800 mb-2 tracking-tight">音源・資料DL</h3>
+                                                 <p className="text-gray-500 mb-6 leading-relaxed text-xs md:text-sm">練習用の音源ファイルや応援歌の資料はGoogleドライブにまとめています。各自ダウンロードして自主練習に励みましょう。</p>
+                                                 <a href="https://drive.google.com/drive/folders/1mFqQ75NwW8WaRQFDME5aYI35WVJBRuhV?usp=sharing" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 text-red-600 font-bold hover:text-red-700 text-sm active:scale-95">
+                                                     Google Driveを開く <Icons.ExternalLink size={16} />
+                                                 </a>
+                                             </div>
+                                             <div className="bg-gradient-to-br from-gray-900 to-gray-800 text-white rounded-3xl p-6 md:p-10 shadow-md relative overflow-hidden">
+                                                 <div className="relative z-10">
+                                                     <h3 className="text-lg md:text-xl font-black mb-2 tracking-tight text-red-400">{info.title}</h3>
+                                                     <p className="text-gray-300 leading-relaxed italic text-sm md:text-base whitespace-pre-wrap">{info.content}</p>
+                                                     <p className="mt-4 font-bold text-xs tracking-widest text-gray-400">{info.author}</p>
+                                                 </div>
+                                             </div>
+                                        </div>
+                                    );
+                                }}
+                            />
+                        )}
+
+                        {currentPage === 'mass' && (
+                            <SectionPage 
+                                title="マスゲーム" bgText="DANCE" news={newsList} category="マスゲーム" themeColor="pink" newsError={newsError} isFetching={isFetching}
+                                renderExtra={() => {
+                                     const info = sectionInfo.find(i => i.id === 'mass-info') || DEFAULT_SECTION_INFO[1];
+                                     return (
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-fade-in-up">
+                                             <div className="bg-gradient-to-br from-pink-100 to-pink-50 rounded-3xl p-6 md:p-10 border border-pink-200 shadow-md relative overflow-hidden">
+                                                 <div className="relative z-10">
+                                                     <h3 className="text-lg md:text-xl font-black mb-2 tracking-tight text-pink-600">{info.title}</h3>
+                                                     <p className="text-gray-700 leading-relaxed mb-4 text-sm md:text-base whitespace-pre-wrap">{info.content}</p>
+                                                     <div className="bg-white/60 backdrop-blur-sm p-3 rounded-lg border border-pink-100 text-xs font-bold text-pink-800 inline-block">{info.author}</div>
+                                                 </div>
+                                             </div>
+                                             <div className="bg-white rounded-3xl p-6 md:p-10 border border-rose-100 shadow-md hover:-translate-y-1 transition-transform duration-300 relative overflow-hidden group">
+                                                 <div className="absolute top-0 right-0 w-24 h-24 bg-pink-50 rounded-bl-full -z-10 group-hover:scale-150 transition-transform duration-500"></div>
+                                                 <div className="w-12 h-12 bg-gradient-to-br from-pink-500 to-fuchsia-600 text-white rounded-xl flex items-center justify-center mb-4 shadow-md -rotate-3">
+                                                     <Icons.Download size={20} />
+                                                 </div>
+                                                 <h3 className="text-xl font-black text-gray-800 mb-2 tracking-tight">練習動画・音源DL</h3>
+                                                 <p className="text-gray-500 mb-6 leading-relaxed text-xs md:text-sm">パートごとの振り付け動画や、フォーメーション図はこちらから確認できます。</p>
+                                                 <button onClick={() => handleTriggerToast('マスゲーム音源フォルダは現在準備中です。', 'success')} className="inline-flex items-center gap-1.5 text-pink-600 font-bold hover:text-pink-700 text-sm active:scale-95">
+                                                     ファイルにアクセス <Icons.ExternalLink size={16} />
+                                                 </button>
+                                             </div>
+                                        </div>
+                                     );
+                                }}
+                            />
+                        )}
+
+                        {currentPage === 'mascot' && (
+                            <SectionPage 
+                                title="マスコット" bgText="ART" news={newsList} category="マスコット" themeColor="orange" newsError={newsError} isFetching={isFetching}
+                                renderExtra={() => {
+                                    const info = sectionInfo.find(i => i.id === 'mascot-info') || DEFAULT_SECTION_INFO[2];
+                                    return (
+                                        <div className="space-y-8 animate-fade-in-up">
+                                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                                 <div className="bg-gradient-to-br from-orange-100 to-orange-50 rounded-3xl p-6 md:p-10 border border-orange-200 shadow-md relative overflow-hidden">
+                                                     <div className="relative z-10">
+                                                         <h3 className="text-lg md:text-xl font-black mb-2 tracking-tight text-orange-600">{info.title}</h3>
+                                                         <p className="text-gray-700 leading-relaxed mb-4 text-sm md:text-base whitespace-pre-wrap">{info.content}</p>
+                                                         <div className="bg-white/60 backdrop-blur-sm p-3 rounded-lg border border-orange-100 text-xs font-bold text-orange-800 inline-block">{info.author}</div>
+                                                     </div>
+                                                 </div>
+                                                 <div className="bg-white rounded-3xl p-6 md:p-10 border border-rose-100 shadow-md hover:-translate-y-1 transition-transform duration-300 relative overflow-hidden group">
+                                                     <div className="absolute top-0 right-0 w-24 h-24 bg-orange-50 rounded-bl-full -z-10 group-hover:scale-150 transition-transform duration-500"></div>
+                                                     <div className="w-12 h-12 bg-gradient-to-br from-orange-500 to-amber-600 text-white rounded-xl flex items-center justify-center mb-4 shadow-md rotate-3">
+                                                         <Icons.Download size={20} />
+                                                     </div>
+                                                     <h3 className="text-xl font-black text-gray-800 mb-2 tracking-tight">デザイン案・設計図</h3>
+                                                     <p className="text-gray-500 mb-6 leading-relaxed text-xs md:text-sm">マスコットの設計図やカラーラフはこちらのドライブに保存されています。制作メンバーは確認をお願いします。</p>
+                                                     <button onClick={() => handleTriggerToast('マスコット設計図フォルダは現在準備中です。', 'success')} className="inline-flex items-center gap-1.5 text-orange-600 font-bold hover:text-orange-700 text-sm active:scale-95">
+                                                         設計図を見る <Icons.ExternalLink size={16} />
+                                                     </button>
+                                                 </div>
+                                             </div>
+
+                                             <div className="space-y-6 bg-white p-4 md:p-10 rounded-3xl shadow-md border border-rose-100">
+                                                 <div className="text-center mb-4">
+                                                     <h2 className="text-2xl font-black text-gray-800 tracking-tight">3Dモデルビューワー</h2>
+                                                     <p className="text-orange-400 font-bold tracking-widest text-xs mt-1">PREVIEW</p>
+                                                 </div>
+                                                 <div className="w-full aspect-square md:aspect-[21/9] bg-gradient-to-br from-gray-900 to-gray-800 rounded-2xl shadow-inner flex flex-col items-center justify-center relative overflow-hidden group">
+                                                     <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] opacity-20 mix-blend-overlay"></div>
+                                                     <div className="w-24 h-24 md:w-32 md:h-32 relative mb-6 md:mb-12 animate-spin-slow" style={{ transformStyle: 'preserve-3d' }}>
+                                                         <div className="absolute inset-0 border-2 border-orange-500/50 bg-gradient-to-br from-orange-400/20 to-orange-600/20 backdrop-blur-md shadow-[0_0_30px_rgba(249,115,22,0.3)]" style={{ transform: 'translateZ(48px)' }}></div>
+                                                         <div className="absolute inset-0 border-2 border-orange-500/50 bg-gradient-to-br from-orange-400/20 to-orange-600/20 backdrop-blur-md shadow-[0_0_30px_rgba(249,115,22,0.3)]" style={{ transform: 'rotateY(180deg) translateZ(48px)' }}></div>
+                                                         <div className="absolute inset-0 border-2 border-orange-500/50 bg-gradient-to-br from-orange-400/20 to-orange-600/20 backdrop-blur-md shadow-[0_0_30px_rgba(249,115,22,0.3)]" style={{ transform: 'rotateY(90deg) translateZ(48px)' }}></div>
+                                                         <div className="absolute inset-0 border-2 border-orange-500/50 bg-gradient-to-br from-orange-400/20 to-orange-600/20 backdrop-blur-md shadow-[0_0_30px_rgba(249,115,22,0.3)]" style={{ transform: 'rotateY(-90deg) translateZ(48px)' }}></div>
+                                                         <div className="absolute inset-0 border-2 border-orange-500/50 bg-gradient-to-br from-orange-400/20 to-orange-600/20 backdrop-blur-md shadow-[0_0_30px_rgba(249,115,22,0.3)]" style={{ transform: 'rotateX(90deg) translateZ(48px)' }}></div>
+                                                         <div className="absolute inset-0 border-2 border-orange-500/50 bg-gradient-to-br from-orange-400/20 to-orange-600/20 backdrop-blur-md shadow-[0_0_30px_rgba(249,115,22,0.3)]" style={{ transform: 'rotateX(-90deg) translateZ(48px)' }}></div>
+                                                     </div>
+                                                     <div className="relative z-10 px-4 py-1.5 border border-white/20 bg-white/10 backdrop-blur-md rounded-full shadow-lg">
+                                                         <p className="font-bold text-orange-300 tracking-[0.2em] flex items-center gap-1.5 text-xs">
+                                                             <Icons.Box size={14} /> MODEL PREVIEW COMING SOON
+                                                         </p>
+                                                     </div>
+                                                 </div>
+                                                 <div className="flex flex-wrap justify-center gap-2">
+                                                     <button className="px-6 py-2.5 bg-white border rounded-xl text-xs font-bold text-gray-600 hover:border-orange-500 hover:bg-orange-50 flex items-center gap-1.5 shadow-sm active:scale-95"><Icons.RefreshCw size={14} /> リセット</button>
+                                                     <button className="px-6 py-2.5 bg-white border rounded-xl text-xs font-bold text-gray-600 hover:border-orange-500 hover:bg-orange-50 flex items-center gap-1.5 shadow-sm active:scale-95"><Icons.ImageIcon size={14} /> 外殻非表示</button>
+                                                 </div>
+                                             </div>
+                                        </div>
+                                    );
+                                }}
+                            />
+                        )}
+
+                        {currentPage === 'admin' && (
+                            <AdminPage 
+                                news={newsList} 
+                                setNews={setNewsList} 
+                                blogs={blogList} 
+                                setBlogs={setBlogList} 
+                                sectionInfo={sectionInfo} 
+                                setSectionInfo={setSectionInfo} 
+                                onTriggerToast={handleTriggerToast}
+                            />
+                        )}
+                    </main>
+                    
+                    <footer className="bg-gray-900 py-12 text-center mt-12 rounded-t-3xl relative overflow-hidden">
+                        <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] opacity-10 mix-blend-overlay"></div>
+                        <div className="relative z-10 px-4">
+                            <h2 className="text-xl font-black text-white tracking-tighter mb-1">桃色E団</h2>
+                            <p className="text-gray-500 text-xs tracking-widest font-bold mb-6">2026 SPORTS FESTIVAL</p>
+                            <div className="w-10 h-0.5 bg-gray-800 mx-auto mb-6 rounded-full"></div>
+                            <p className="text-xs text-gray-600 font-mono pb-safe-bottom">&copy; 2026 桃色E団 All Rights Reserved.</p>
+                        </div>
+                    </footer>
+                </div>
+            );
+        }
+
+        const container = document.getElementById('root');
+        const root = ReactDOM.createRoot(container);
+        root.render(<App />);
+    </script>
+
+    <!-- CUSTOM STYLES (Animations & iOS PWA Safe Area Helper) -->
+    <style>
+        @keyframes fade-in-up {
+            0% { opacity: 0; transform: translateY(15px); }
+            100% { opacity: 1; transform: translateY(0); }
+        }
+        .animate-fade-in-up {
+            animation: fade-in-up 0.4s ease-out forwards;
+            opacity: 0;
+        }
+        @keyframes blob {
+            0% { transform: translate(0px, 0px) scale(1); }
+            33% { transform: translate(20px, -30px) scale(1.05); }
+            66% { transform: translate(-15px, 15px) scale(0.95); }
+            100% { transform: translate(0px, 0px) scale(1); }
+        }
+        @keyframes monyu {
+            0%, 100% { border-radius: 60% 40% 30% 70% / 60% 30% 70% 40%; }
+            50% { border-radius: 30% 60% 70% 40% / 50% 60% 30% 60%; }
+        }
+        .animate-monyu {
+            animation: blob 8s infinite, monyu 6s ease-in-out infinite alternate;
+        }
+        @keyframes monyu-grad {
+            0%, 100% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+        }
+        .animate-monyu-grad {
+            animation: monyu-grad 10s ease-in-out infinite;
+            background-size: 200% 200%;
+        }
+        .animation-delay-2000 { animation-delay: 2s; }
+        .animation-delay-4000 { animation-delay: 4s; }
+        .scrollbar-hide::-webkit-scrollbar { display: none; }
+        .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+
+        /* iOS 11以降のセーフエリア（ノッチ・下部バー）対策 */
+        .pt-safe {
+            padding-top: max(1rem, env(safe-area-inset-top));
+        }
+        .pt-safe-top {
+            padding-top: max(4.5rem, calc(4.5rem + env(safe-area-inset-top)));
+        }
+        .pb-safe {
+            padding-bottom: max(0px, env(safe-area-inset-bottom));
+        }
+        .pb-safe-bottom {
+            padding-bottom: max(1rem, calc(1rem + env(safe-area-inset-bottom)));
+        }
+    </style>
+</body>
+</html>
