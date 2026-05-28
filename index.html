@@ -140,7 +140,7 @@
                 <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
             ),
             Bell: ({ size = 18, className }) => (
-                <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"></path><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"></path></svg>
+                <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"></path><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"></path></svg>
             )
         };
 
@@ -220,7 +220,7 @@
             );
         };
 
-        // React用のOneSignalプッシュ購読ボタン
+        // React用の改良版OneSignalプッシュ購読ボタン
         const PushSubscriptionButton = () => {
             const [isSubscribed, setIsSubscribed] = useState(false);
             const [isSupported, setIsSupported] = useState(true);
@@ -229,47 +229,62 @@
             useEffect(() => {
                 window.OneSignalDeferred = window.OneSignalDeferred || [];
                 window.OneSignalDeferred.push((OneSignal) => {
-                    // プッシュ通知がサポートされているか確認
-                    setIsSupported(OneSignal.Notifications.isPushSupported());
-                    
-                    // 初期状態の取得
-                    setIsSubscribed(OneSignal.User.PushSubscription.optedIn);
+                    try {
+                        // プッシュ通知がサポートされているか確認
+                        setIsSupported(OneSignal.Notifications.isPushSupported());
+                        
+                        // 初期状態の取得
+                        setIsSubscribed(OneSignal.User.PushSubscription.optedIn || false);
 
-                    // 購読ステータスの変化を監視するイベントリスナー
-                    const handleSubscriptionChange = (event) => {
-                        setIsSubscribed(event.current.optedIn);
-                        setIsPending(false);
-                    };
+                        // 購読ステータスの変化を監視するイベントリスナー
+                        const handleSubscriptionChange = (event) => {
+                            setIsSubscribed(event.current.optedIn);
+                            setIsPending(false);
+                        };
 
-                    OneSignal.User.PushSubscription.addEventListener("change", handleSubscriptionChange);
+                        OneSignal.User.PushSubscription.addEventListener("change", handleSubscriptionChange);
 
-                    return () => {
-                        OneSignal.User.PushSubscription.removeEventListener("change", handleSubscriptionChange);
-                    };
+                        return () => {
+                            OneSignal.User.PushSubscription.removeEventListener("change", handleSubscriptionChange);
+                        };
+                    } catch (e) {
+                        console.warn("OneSignal event listener setup failed:", e);
+                    }
                 });
             }, []);
 
             const handleToggleSubscription = () => {
                 setIsPending(true);
+                
+                // 5秒経過しても変化がない場合に処理中を強制解除するセーフティタイマー
+                const safetyTimeout = setTimeout(() => {
+                    setIsPending(false);
+                }, 5000);
+
                 window.OneSignalDeferred = window.OneSignalDeferred || [];
                 window.OneSignalDeferred.push(async (OneSignal) => {
                     try {
                         if (OneSignal.User.PushSubscription.optedIn) {
-                            // 購読中の場合はオプトアウト（配信停止）
+                            // 購読中の場合は配信停止
                             await OneSignal.User.PushSubscription.optOut();
                         } else {
-                            // 未購読の場合はオプトイン（通知を許可するダイアログを表示）
+                            // 未購読の場合は明示的に許可を促した上で購読開始
+                            await OneSignal.Notifications.requestPermission();
                             await OneSignal.User.PushSubscription.optIn();
                         }
+                        // 状態を同期してpendingを解除
+                        setIsSubscribed(OneSignal.User.PushSubscription.optedIn);
                     } catch (error) {
-                        console.error("購読の切り替えに失敗しました:", error);
+                        console.error("通知購読の切り替え処理に失敗しました:", error);
+                    } finally {
+                        clearTimeout(safetyTimeout);
                         setIsPending(false);
                     }
                 });
             };
 
             if (!isSupported) {
-                return null; // 非サポート端末では表示しない
+                return null; // 非サポート端末では非表示
             }
 
             return (
@@ -741,7 +756,7 @@
                 setFormData({ id: null, pin: 'none', heading: '', date: localISOTime, category: '全体', author: '', title: '', content: '', studentId: '' });
             };
 
-            useEffect(() => { setConfirmDeleteId(null); }, [activeTab, targetType]);
+            useEffect(() => { setConfirmDeleteId(null); }, [activeTab, text => setTargetType(text)]);
 
             const saveToGAS = async (data, action, typeOverride) => {
                 setIsLoading(true);
