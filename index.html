@@ -203,7 +203,8 @@
                     shiftArr.push(myNumber); // シフトに入る
                 }
                 const newShiftsStr = shiftArr.join(',');
-                const updatedSchedule = { ...schedule, shifts: newShiftsStr };
+                const { shiftArr, isMatched, hasMyShift, ...cleanSchedule } = schedule;
+const updatedSchedule = { ...cleanSchedule, shifts: newShiftsStr };
                 
                 setLoadingShiftId(schedule.id);
                 try {
